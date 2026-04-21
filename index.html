@@ -97,14 +97,28 @@
 </div>
 
 <script>
-    const URL_API = "https://script.google.com/macros/s/AKfycbxj1wTxBjp88RkoVEbudNxHre3pwSOyLxnIlPG3BHRyxz03AvJ9NTENGJzGpOW3-HlTQQ/exec"; 
+    const URL_API = "https://script.google.com/macros/s/AKfycbwdxyura86cEosP2tFgZK3fXYBaL4rapnN6NQpYuVhzDMsvzH_B284LowlOv4hrhcmg7g/exec"; 
     let user = ""; 
     const eqs = ["Preliminar", "Elevatória", "Centrífuga", "B01", "B02", "B03", "B04", "S01", "S02", "S03", "C01", "C02"];
-    const listaVálvulas = ["V01","V02","V03","V04","V05","V06","V07","V08","V09","V10","V11","V12","V13","V14","V15","V16","V17","V18","V19","V20","V21","V22","V23","V24","V25","V26","V27","V28","V29","V30","V31","V32"];
+    const listaVálvulas = Array.from({length: 32}, (_, i) => `V${String(i + 1).padStart(2, '0')}`);
 
-    let statusMap = JSON.parse(localStorage.getItem('memoria_checklist_permanente')) || {};
-    let valvulasMap = JSON.parse(localStorage.getItem('memoria_valvulas_ete')) || {};
+    let statusMap = {};
+    let valvulasMap = {};
     let valvulasAlteradas = new Set(); 
+
+    async function sincronizarDadosIniciais() {
+        try {
+            const resp = await fetch(`${URL_API}?funcao=buscarStatusAtual`);
+            const dados = await resp.json();
+            if (dados.checklist) statusMap = dados.checklist;
+            if (dados.valvulas) valvulasMap = dados.valvulas;
+            console.log("Sincronização concluída.");
+        } catch (err) {
+            console.error("Erro ao sincronizar.", err);
+        }
+    }
+
+    window.onload = sincronizarDadosIniciais;
 
     function verTela(id) {
         document.querySelectorAll('.tela, #home').forEach(t => t.style.display = 'none');
@@ -130,132 +144,117 @@
 
     function montarChecklist() {
         const div = document.getElementById('lista-eq');
-        div.innerHTML = "";
+        let html = "";
         eqs.forEach(e => {
             const s = statusMap[e] || ""; 
-            div.innerHTML += `
-                <div style="margin-bottom:15px; padding:10px; border-bottom: 1px solid #eee;">
-                    <strong>${e}</strong>
-                    <div class="btn-box">
-                        <button class="btn-chk ${s === 'EM OPERAÇÃO' ? 'active-verde' : ''}" onclick="setStat('${e}','EM OPERAÇÃO', this)">EM OPERAÇÃO</button>
-                        <button class="btn-chk ${s === 'EM OBSERVAÇÃO' ? 'active-amarelo' : ''}" onclick="setStat('${e}','EM OBSERVAÇÃO', this)">EM OBSERVAÇÃO</button>
-                        <button class="btn-chk ${s === 'FORA DE OPERAÇÃO' ? 'active-vermelho' : ''}" onclick="setStat('${e}','FORA DE OPERAÇÃO', this)">FORA DE OPERAÇÃO</button>
-                    </div>
-                </div>`;
+            html += `<div style="margin-bottom:15px; padding:10px; border-bottom: 1px solid #eee;">
+                <strong>${e}</strong>
+                <div class="btn-box">
+                    <button class="btn-chk ${s === 'EM OPERAÇÃO' ? 'active-verde' : ''}" onclick="setStat('${e}','EM OPERAÇÃO', this)">EM OPERAÇÃO</button>
+                    <button class="btn-chk ${s === 'EM OBSERVAÇÃO' ? 'active-amarelo' : ''}" onclick="setStat('${e}','EM OBSERVAÇÃO', this)">EM OBSERVAÇÃO</button>
+                    <button class="btn-chk ${s === 'FORA DE OPERAÇÃO' ? 'active-vermelho' : ''}" onclick="setStat('${e}','FORA DE OPERAÇÃO', this)">FORA DE OPERAÇÃO</button>
+                </div>
+            </div>`;
         });
+        div.innerHTML = html;
     }
 
     function setStat(eq, st, btn) {
         statusMap[eq] = st;
-        localStorage.setItem('memoria_checklist_permanente', JSON.stringify(statusMap));
         const grupo = btn.parentElement.querySelectorAll('.btn-chk');
         grupo.forEach(b => b.classList.remove('active-verde', 'active-amarelo', 'active-vermelho'));
         if (st === 'EM OPERAÇÃO') btn.classList.add('active-verde');
-        if (st === 'EM OBSERVAÇÃO') btn.classList.add('active-amarelo');
-        if (st === 'FORA DE OPERAÇÃO') btn.classList.add('active-vermelho');
-    }
-    
-    async function enviarRelatorio() {
-        const d = { tipo: "relatorio", operador: user, data: new Date().toLocaleString(), ocorrencia: document.getElementById('relato-texto').value, status: statusMap };
-        await fetch(URL_API, { method: 'POST', mode: 'no-cors', body: JSON.stringify(d) });
-        alert("Checklist gravado com sucesso!"); 
-        verTela('home');
-    }
-
-    async function enviarOutorga() {
-        const d = { tipo: "outorga", operador: user, hidrometro: document.getElementById('out-hidro').value, horimetro: document.getElementById('out-horo').value, mesRef: document.getElementById('out-mes').value };
-        await fetch(URL_API, { method: 'POST', mode: 'no-cors', body: JSON.stringify(d) });
-        alert("Salvo!"); verTela('home');
+        else if (st === 'EM OBSERVAÇÃO') btn.classList.add('active-amarelo');
+        else if (st === 'FORA DE OPERAÇÃO') btn.classList.add('active-vermelho');
     }
 
     function montarTelaValvulas() {
         const container = document.getElementById('lista-valvulas-container');
-        container.innerHTML = "";
+        let html = "";
         listaVálvulas.forEach(v => {
             const s = valvulasMap[v] || "EM OPERAÇÃO";
-            container.innerHTML += `
-                <div style="margin-bottom:12px; padding: 10px; border-bottom: 1px solid #eee; background: #fff;">
-                    <strong style="display:block; margin-bottom:5px;">Válvula ${v}</strong>
-                    <div class="btn-box">
-                        <button class="btn-chk ${s === 'EM OPERAÇÃO' ? 'active-verde' : ''}" onclick="setStatusValvula('${v}','EM OPERAÇÃO', this)">EM OPERAÇÃO</button>
-                        <button class="btn-chk ${s === 'FORA DE OPERAÇÃO' ? 'active-vermelho' : ''}" onclick="setStatusValvula('${v}','FORA DE OPERAÇÃO', this)">FORA DE OPERAÇÃO</button>
-                    </div>
-                </div>`;
+            html += `<div style="margin-bottom:12px; padding: 10px; border-bottom: 1px solid #eee; background: #fff;">
+                <strong style="display:block; margin-bottom:5px;">Válvula ${v}</strong>
+                <div class="btn-box">
+                    <button class="btn-chk ${s === 'EM OPERAÇÃO' ? 'active-verde' : ''}" onclick="setStatusValvula('${v}','EM OPERAÇÃO', this)">EM OPERAÇÃO</button>
+                    <button class="btn-chk ${s === 'FORA DE OPERAÇÃO' ? 'active-vermelho' : ''}" onclick="setStatusValvula('${v}','FORA DE OPERAÇÃO', this)">FORA DE OPERAÇÃO</button>
+                </div>
+            </div>`;
         });
+        container.innerHTML = html;
     }
 
     function setStatusValvula(v, st, btn) {
-    valvulasMap[v] = st;
-    localStorage.setItem('memoria_valvulas_ete', JSON.stringify(valvulasMap));
-    
-    // Força o registro da alteração
-    valvulasAlteradas.add(v); 
-
-    const grupo = btn.parentElement.querySelectorAll('button');
-    grupo.forEach(b => b.classList.remove('active-verde', 'active-vermelho'));
-    if (st === 'EM OPERAÇÃO') btn.classList.add('active-verde');
-    if (st === 'FORA DE OPERAÇÃO') btn.classList.add('active-vermelho');
-}
-
-async function enviarManobraGeral() {
-    if (!user) { alert("Faça login primeiro!"); return; }
-
-    // Se o operador não clicou em nada nesta sessão, vamos perguntar se ele quer enviar tudo
-    if (valvulasAlteradas.size === 0) {
-        const confirmar = confirm("Nenhuma alteração manual foi detectada. Deseja enviar o status atual de todas as 32 válvulas?");
-        if (!confirmar) return;
-        // Se confirmar, adiciona todas as válvulas para envio
-        listaVálvulas.forEach(v => valvulasAlteradas.add(v));
+        valvulasMap[v] = st;
+        valvulasAlteradas.add(v); 
+        const grupo = btn.parentElement.querySelectorAll('button');
+        grupo.forEach(b => b.classList.remove('active-verde', 'active-vermelho'));
+        if (st === 'EM OPERAÇÃO') btn.classList.add('active-verde');
+        else btn.classList.add('active-vermelho');
     }
 
-    const btnSalvar = document.querySelector("#tela-valvulas .btn-save");
-    btnSalvar.innerText = "Enviando para Planilha...";
-    btnSalvar.disabled = true;
+    // --- FUNÇÕES DE ENVIO (POST) ---
 
-    try {
-        for (const v of valvulasAlteradas) {
-            const status = valvulasMap[v] || "EM OPERAÇÃO";
-            const obs = document.getElementById('valv-obs-geral').value || "Status de rotina";
-
-            const dados = {
-                tipo: "Válvulas", 
-                operador: user,
-                id: v,             
-                status: status,    
-                obs: obs           
-            };
-
-            await fetch(URL_API, { 
-                method: 'POST', 
-                mode: 'no-cors', 
-                body: JSON.stringify(dados) 
-            });
-        }
-
-        alert("Sucesso! As manobras foram registradas na aba Válvulas.");
-        valvulasAlteradas.clear(); 
+    async function enviarRelatorio() {
+        if (!user) return;
+        const d = { tipo: "relatorio", operador: user, data: new Date().toLocaleString("pt-BR"), ocorrencia: document.getElementById('relato-texto').value, status: statusMap };
+        await fetch(URL_API, { method: 'POST', mode: 'no-cors', body: JSON.stringify(d) });
+        alert("Checklist gravado!");
         verTela('home');
-
-    } catch (e) {
-        alert("Erro de conexão ao enviar.");
-    } finally {
-        btnSalvar.innerText = "💾 Gravar Status das Válvulas";
-        btnSalvar.disabled = false;
     }
-}
 
-    async function carregarMural() {
-        try {
-            const r = await fetch(`${URL_API}?funcao=buscarManutencao`);
-            const dados = await r.json();
-            document.getElementById('mural-os').innerHTML = dados.map(i => `<div><strong>${i.os}</strong><br>${i.desc}<hr></div>`).join('');
-        } catch(e) { document.getElementById('mural-os').innerHTML = "Sem recados."; }
+    async function enviarManobraGeral() {
+        if (!user) return;
+        const listaParaEnviar = valvulasAlteradas.size > 0 ? Array.from(valvulasAlteradas) : listaVálvulas;
+        const pacoteDados = { tipo: "Válvulas", operador: user, multiplas: true, payload: listaParaEnviar.map(v => ({ id: v, status: valvulasMap[v] || "EM OPERAÇÃO", obs: document.getElementById('valv-obs-geral').value })) };
+        await fetch(URL_API, { method: 'POST', mode: 'no-cors', body: JSON.stringify(pacoteDados) });
+        alert("Válvulas sincronizadas!");
+        valvulasAlteradas.clear();
+        verTela('home');
+    }
+
+    async function enviarOutorga() {
+        if (!user) { alert("Faça login!"); return; }
+        const d = { 
+            tipo: "outorga", 
+            operador: user, 
+            hidrometro: document.getElementById('out-hidro').value, 
+            horimetro: document.getElementById('out-horo').value, 
+            mesRef: document.getElementById('out-mes').value 
+        };
+        await fetch(URL_API, { method: 'POST', mode: 'no-cors', body: JSON.stringify(d) });
+        alert("Dados de Outorga enviados!");
+        verTela('home');
     }
 
     async function enviarOS() {
-        const d = { tipo: "os", operador: user, numeroOS: document.getElementById('os-num').value, descricao: document.getElementById('os-txt').value };
+        if (!user) { alert("Faça login!"); return; }
+        const d = { 
+            tipo: "os", 
+            operador: user, 
+            numeroOS: document.getElementById('os-num').value, 
+            descricao: document.getElementById('os-txt').value 
+        };
         await fetch(URL_API, { method: 'POST', mode: 'no-cors', body: JSON.stringify(d) });
-        alert("Publicado!"); carregarMural();
+        alert("Publicado no Mural!");
+        document.getElementById('os-num').value = "";
+        document.getElementById('os-txt').value = "";
+        carregarMural();
+    }
+
+    async function carregarMural() {
+        const mural = document.getElementById('mural-os');
+        mural.innerHTML = "Carregando...";
+        try {
+            const r = await fetch(`${URL_API}?funcao=buscarManutencao`);
+            const dados = await r.json();
+            mural.innerHTML = dados.map(i => `
+                <div style="padding:8px; border-bottom:1px solid #ddd;">
+                    <small>${i.data}</small><br>
+                    <strong>${i.os}</strong> - <span style="color:blue;">${i.res}</span><br>
+                    ${i.desc}
+                </div>`).join('');
+        } catch(e) { mural.innerHTML = "Sem recados recentes."; }
     }
 </script>
 </body>
